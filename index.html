@@ -112,10 +112,10 @@ const fmt=n=>Number(n).toLocaleString('es-CO');
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let S={},step=0;
 const ICO=['🟢','🔵','🟠','🔴'];
-function size(){if(!S.sector||!S.ing)return null;const L=LIM[S.sector],v=S.ing;return v<=L[0]?'Micro':v<=L[1]?'Pequeña':v<=L[2]?'Mediana':'Grande'}
-function sizeTxt(){const z=size();return z?`${z==='Micro'?'Microempresa':z+' empresa'} · Sector ${SEC[S.sector].s}`:''}
+
+function sizeTxt(){return S.size ? (S.size==='Micro'?'Microempresa':S.size+' empresa') + ' · Sector ' + SEC[S.sector].s : '';}
 function nitCheck(d){if(d.length<7)return null;const b=d.slice(0,-1),dv=+d.slice(-1),w=[3,7,13,17,19,23,29,37,41,43,47,53,59,67,71];let s=0;[...b].reverse().forEach((c,i)=>s+=c*w[i]);const r=s%11;return dv===(r<2?r:11-r)}
-function maskNit(d){if(d.length<2)return d;const b=d.slice(0,-1).replace(/\B(?=(\d{3})+(?!\d))/g,'.');return b+'-'+d.slice(-1)}
+
 /* ===== RENDER ===== */
 function progress(){const p=Math.round(step/SECTIONS.length*100);$('#prog').innerHTML=`<b><span>Paso ${step+1} de ${SECTIONS.length}: ${SECTIONS[step]?.t||'Resultados'}</span><span>${p}%</span></b><div class="bar" role="progressbar" aria-valuenow="${p}"><i style="width:${p}%"></i></div>`;if(step>=SECTIONS.length)$('#prog').innerHTML=''}
 function render(){progress();window.scrollTo({top:0,behavior:'smooth'});
@@ -126,26 +126,53 @@ function render(){progress();window.scrollTo({top:0,behavior:'smooth'});
  (sc.open||[]).forEach(([id,q])=>{h+=`<div class="q">${id}. ${q}</div><textarea id="o${id}" rows="4" maxlength="500">${esc(S['q'+id]||'')}</textarea><small class="noprint" id="c${id}" style="color:var(--mut)">${(S['q'+id]||'').length}/500</small>`});
  h+=`<div class="err" id="msg" role="alert"></div><div class="nav"><button class="sec" onclick="go(-1)"${step?'':' disabled style="opacity:.4"'}>← Anterior</button><button class="pri" onclick="go(1)">${step==SECTIONS.length-1?'Ver resultados ✓':'Siguiente →'}</button></div><div style="text-align:center"><button class="lnk" onclick="if(confirm('¿Reiniciar el diagnóstico? Se perderán las respuestas.')){S={};step=0;render()}">Reiniciar</button></div></div>`;
  $('#view').innerHTML=h;
- $$('.opt[data-q]').forEach(l=>l.onchange=()=>{S['q'+l.dataset.q]=+l.querySelector('input').value;$$(`.opt[data-q="${l.dataset.q}"]`).forEach(x=>x.classList.remove('sel'));l.classList.add('sel')});
+ $$('.opt[data-q]').forEach(l=>l.onchange=()=>{S['q'+l.dataset.q]=+l.querySelector('input').value;$$
+(`.opt[data-q="${l.dataset.q}"]`).forEach(x=>x.classList.remove('sel'));l.classList.add('sel')});
  (sc.open||[]).forEach(([id])=>$('#o'+id).oninput=e=>{S['q'+id]=e.target.value;$('#c'+id).textContent=e.target.value.length+'/500'});
  if(sc.co)initCompany();
 }
+
 function companyHTML(){return `
 <label class="l" for="name">Nombre del negocio o razón social</label><input type="text" id="name" value="${esc(S.name||'')}" autocomplete="organization">
-<label class="l" for="nit">NIT (con dígito de verificación)</label><input type="tel" id="nit" placeholder="900.123.456-7" value="${S.nit?maskNit(S.nit):''}"><div id="nitm"></div>
+<label class="l" for="nit">NIT (con dígito de verificación)</label><input type="tel" id="nit" placeholder="Ej: 900123456-7" value="${esc(S.rawNit||'')}"><div id="nitm"></div>
 <label class="l">Sector económico</label><div class="sect" role="radiogroup">${Object.entries(SEC).map(([k,v])=>`<label class="opt${S.sector===k?' sel':''}" data-s="${k}"><input type="radio" name="sec"><span class="ic">${v.i}</span><b>${v.n}</b></label>`).join('')}</div>
 <label class="l" for="ciiu">Actividad económica principal (código CIIU)</label><div class="cb" id="cb"></div><div id="cw"></div>
-<label class="l" for="ing">Ingresos anuales por actividades ordinarias (COP)</label><input type="tel" id="ing" placeholder="$1.500.000.000" value="${S.ing?'$'+fmt(S.ing):''}"><small id="uvt" style="color:var(--mut)"></small><div id="size"></div>`}
+<label class="l">Tamaño de la empresa (según ingresos anuales)</label><div class="sect" id="size-opts" role="radiogroup" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));"></div>`}
+
+function updateSizeOptions(){
+ const c=$('#size-opts');
+ if(!c)return;
+ if(!S.sector){c.innerHTML='<div style="color:var(--mut);font-size:14px;grid-column:1/-1">Selecciona primero un sector económico.</div>';return;}
+ const L=LIM[S.sector];
+ const opts=[
+  {k:'Micro',t:'Microempresa',d:`Hasta $${fmt(L[0])}`},
+  {k:'Pequeña',t:'Pequeña empresa',d:`Más de $${fmt(L[0])} y hasta $${fmt(L[1])}`},
+  {k:'Mediana',t:'Mediana empresa',d:`Más de $${fmt(L[1])} y hasta $${fmt(L[2])}`},
+  {k:'Grande',t:'Gran empresa',d:`Superior a $${fmt(L[2])}`}
+ ];
+ c.innerHTML=opts.map(o=>`<label class="opt${S.size===o.k?' sel':''}" data-size="${o.k}" style="text-align:left;align-items:flex-start;padding:12px"><input type="radio" name="sz"><div><b>${o.t}</b><small style="display:block;font-size:12px;margin-top:4px">${o.d}</small></div></label>`).join('');
+ $$('.opt[data-size]').forEach(l=>l.onchange=()=>{S.size=l.dataset.size;$$
+('.opt[data-size]').forEach(x=>x.classList.toggle('sel',x.dataset.size===S.size))});
+}
+
 function initCompany(){
  $('#name').oninput=e=>S.name=e.target.value;
- const nit=$('#nit');const chk=()=>{const r=nitCheck(S.nit||'');$('#nitm').innerHTML=r===null?'':r?'<div class="okm">✔ NIT válido</div>':'<div class="err">El dígito de verificación no coincide</div>'};
- nit.oninput=e=>{S.nit=e.target.value.replace(/\D/g,'').slice(0,10);e.target.value=maskNit(S.nit);chk()};chk();
- $$('.opt[data-s]').forEach(l=>l.onchange=()=>setSector(l.dataset.s));
- const ing=$('#ing');const upd=()=>{$('#uvt').textContent=S.ing?`≈ ${fmt((S.ing/UVT).toFixed(0))} UVT (1 UVT = $${fmt(UVT)})`:'';$('#size').innerHTML=size()?`<span class="badge">${sizeTxt()}</span>`:''};
- ing.oninput=e=>{S.ing=+e.target.value.replace(/\D/g,'')||0;e.target.value=S.ing?'$'+fmt(S.ing):'';upd()};upd();S.upd=upd;
- combo();
+ const nit=$('#nit');
+ const chk=()=>{const r=nitCheck(S.nit||'');$('#nitm').innerHTML=r===null?'':r?'<div class="okm">✔ NIT válido</div>':'<div class="err">El dígito de verificación no coincide</div>'};
+ nit.oninput=e=>{
+    let val = e.target.value.replace(/[^\d-]/g, ''); // Permite números y guiones libremente sin saltos
+    e.target.value = val;
+    S.rawNit = val;
+    S.nit = val.replace(/\D/g, ''); 
+    chk();
+ };
+ chk();
+ $$('.opt[data-s]').forEach(l=>l.onchange=()=>setSector(l.dataset.s));  updateSizeOptions();  combo(); }  function setSector(k){  if(S.sector !== k) S.size = null;  S.sector=k;  $$
+('.opt[data-s]').forEach(x=>x.classList.toggle('sel',x.dataset.s===k));
+ if(typeof updateSizeOptions === 'function') updateSizeOptions();
+ $('#cw').innerHTML='';
 }
-function setSector(k){S.sector=k;$$('.opt[data-s]').forEach(x=>x.classList.toggle('sel',x.dataset.s===k));S.upd&&S.upd();$('#cw').innerHTML=''}
+
 function combo(){
  const box=$('#cb');
  if(S.ciiu){box.innerHTML=`<div class="chip"><span><b>${S.ciiu.codigo}</b> — ${esc(S.ciiu.descripcion)}</span><button class="sec" id="chg">Cambiar</button></div>`;$('#chg').onclick=()=>{S.ciiu=null;combo();$('#ciiu').focus()};return}
@@ -158,19 +185,17 @@ function combo(){
   ls.hidden=false;ls.innerHTML=res.length?res.slice(0,150).map((c,i)=>`<div role="option" data-i="${i}"><span><b>${hl(c.codigo)}</b> — ${hl(c.descripcion)}</span>${S.sector?'':`<span class="tag ${c.sector}">${SEC[c.sector].s}</span>`}</div>`).join(''):'<div>Sin resultados</div>';
   const o=S.sector&&CIIU.find(c=>c.codigo===q&&c.sector!==S.sector);
   $('#cw').innerHTML=o?`<div class="warn">El código ${q} pertenece al sector <b>${SEC[o.sector].s}</b>, no a ${SEC[S.sector].s}. <button class="lnk" id="sw">Cambiar sector a ${SEC[o.sector].s}</button></div>`:'';
-  if(o)$('#sw').onclick=()=>{setSector(o.sector);show()}};
- const pick=c=>{S.ciiu=c;setSector(c.sector);combo()};
- inp.onfocus=inp.oninput=show;
- ls.onmousedown=e=>{const d=e.target.closest('[data-i]');if(d){e.preventDefault();pick(res[+d.dataset.i])}};
- inp.onkeydown=e=>{const it=$$('#ls [data-i]');if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();ai=(ai+(e.key==='ArrowDown'?1:-1)+it.length)%it.length;it.forEach((x,i)=>x.classList.toggle('act',i===ai));it[ai]?.scrollIntoView({block:'nearest'})}else if(e.key==='Enter'&&ai>=0){e.preventDefault();pick(res[ai])}else if(e.key==='Escape')ls.hidden=true};
+  if(o)$('#sw').onclick=()=>{setSector(o.sector);show()}};  const pick=c=>{S.ciiu=c;setSector(c.sector);combo()};  inp.onfocus=inp.oninput=show;  ls.onmousedown=e=>{const d=e.target.closest('[data-i]');if(d){e.preventDefault();pick(res[+d.dataset.i])}};  inp.onkeydown=e=>{const it=$$('#ls [data-i]');if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();ai=(ai+(e.key==='ArrowDown'?1:-1)+it.length)%it.length;it.forEach((x,i)=>x.classList.toggle('act',i===ai));it[ai]?.scrollIntoView({block:'nearest'})}else if(e.key==='Enter'&&ai>=0){e.preventDefault();pick(res[ai])}else if(e.key==='Escape')ls.hidden=true};
  inp.onblur=()=>ls.hidden=true;
 }
+
 /* ===== NAVEGACIÓN Y VALIDACIÓN ===== */
 function valid(){const sc=SECTIONS[step];
- if(sc.co){if(!(S.name||'').trim())return'Escribe el nombre o razón social.';if(!nitCheck(S.nit||''))return'Ingresa un NIT válido con su dígito de verificación.';if(!S.sector)return'Selecciona el sector económico.';if(!S.ciiu)return'Elige tu actividad económica (código CIIU) de la lista.';if(!S.ing)return'Indica tus ingresos anuales.'}
+ if(sc.co){if(!(S.name||'').trim())return'Escribe el nombre o razón social.';if(!nitCheck(S.nit||''))return'Ingresa un NIT válido con su dígito de verificación.';if(!S.sector)return'Selecciona el sector económico.';if(!S.ciiu)return'Elige tu actividad económica (código CIIU) de la lista.';if(!S.size)return'Selecciona el tamaño de tu empresa.';}
  for(const [id] of sc.qs||[])if(S['q'+id]===undefined)return`Falta responder la pregunta ${id}.`;
  for(const [id] of sc.open||[])if((S['q'+id]||'').trim().length<5)return`Completa la pregunta ${id}.`;return''}
 function go(d){if(d>0){const m=valid();if(m){$('#msg').textContent=m;return}}step+=d;render()}
+
 /* ===== ANÁLISIS ===== */
 const TIPS={
 7:['Refuerza tu presencia (señalización, Google Maps, redes) y facilita el acceso con domicilios o canales digitales.','Evalúa reubicar o abrir un canal de venta alterno (online, domicilios, puntos aliados) para no depender del lugar actual.','Prioriza un plan urgente: la ubicación frena tus ventas; considera trasladar o migrar parte de la operación a canales digitales.'],
@@ -206,12 +231,13 @@ function analysis(dims,g){
   sc.qs.forEach(([id,q,o])=>{const x=S['q'+id];if(x===0)ok++;else{const it={id,lab:o[x].split(': ')[0],tip:TIPS[id][x-1],sev:x/(o.length-1),area:sc.t};imp.push(it);items.push(it)}});
   imp.sort((a,b)=>b.sev-a.sev);
   const read=d.pct>=70?'Esta área es una fortaleza de tu negocio.':d.pct>=40?'Esta área funciona de forma aceptable, pero tiene espacio claro de mejora.':'Esta área es una debilidad crítica y debe ser prioridad.';
-  return `<div class="opt" style="cursor:default;display:block"><b style="color:${lv[1]}">${d.t} · ${lv[0]} (${d.pct}%)</b><small style="color:inherit">${read} ${ok} de ${sc.qs.length} aspectos en nivel óptimo.</small>${imp.length?'<ul style="margin:8px 0 0;padding-left:18px">'+imp.map(m=>`<li><b>P${m.id} · ${esc(m.lab)}:</b> ${m.tip}</li>`).join('')+'</ul>':''}</div>`});
- const best=[...dims].sort((a,b)=>b.pct-a.pct)[0],worst=[...dims].sort((a,b)=>a.pct-b.pct)[0],z=size();
+  return `<div class="opt" style="cursor:default;display:block"><b style="color:${lv[1]}">${d.t} · ${lv[0]} (${d.pct}%)</b><small style="color:inherit">${read} ${ok} de ${sc.qs.length} aspectos en nivel óptimo.</small>${imp.length?'<ul style="margin:8px 0 0;padding-left:18px">'+imp.map(m=>`<li><b>P${m.id} · ${esc(m.lab)}:</b>${m.tip}</li>`).join('')+'</ul>':''}</div>`});
+ const best=[...dims].sort((a,b)=>b.pct-a.pct)[0],worst=[...dims].sort((a,b)=>a.pct-b.pct)[0],z=(S.size||'Micro');
  const plan=[...items].sort((a,b)=>b.sev-a.sev).slice(0,5);
  return `<div class="card"><h3>Análisis general</h3><p><b style="color:${G[1]}">Estado de la empresa: ${G[0]} (${g}%).</b> ${G[2]}</p><p>Como ${z==='Micro'?'microempresa':'empresa '+z.toLowerCase()} del sector ${SEC[S.sector].s.toLowerCase()}, tu área más fuerte es <b>${best.t}</b> (${best.pct}%) y la que más atención requiere es <b>${worst.t}</b> (${worst.pct}%).${S.q34?` El apoyo urgente que indicaste (<i>${esc(S.q34)}</i>) debe estar alineado con ese frente.`:''}</p></div>
 <div class="card"><h3>Análisis por área y sugerencias</h3>${areas.join('')}</div>
-<div class="card"><h3>Plan de acción sugerido</h3>${plan.length?'<p>Las acciones con mayor impacto según tus respuestas:</p><ol>'+plan.map(m=>`<li><b>${m.area}:</b> ${m.tip}</li>`).join('')+'</ol>':'<p>¡Excelente! Todas tus respuestas están en nivel óptimo. Mantén tus buenas prácticas y revisa el diagnóstico cada 6 meses.</p>'}<small style="color:var(--mut)">Orientación general generada a partir de tus respuestas; no reemplaza una asesoría profesional.</small></div>`}
+<div class="card"><h3>Plan de acción sugerido</h3>${plan.length?'<p>Las acciones con mayor impacto según tus respuestas:</p><ol>'+plan.map(m=>`<li><b>${m.area}:</b>${m.tip}</li>`).join('')+'</ol>':'<p>¡Excelente! Todas tus respuestas están en nivel óptimo. Mantén tus buenas prácticas y revisa el diagnóstico cada 6 meses.</p>'}<small style="color:var(--mut)">Orientación general generada a partir de tus respuestas; no reemplaza una asesoría profesional.</small></div>`}
+
 /* ===== RESULTADOS ===== */
 function results(){
  const dims=SECTIONS.slice(2,10).map(sc=>{let p=0;sc.qs.forEach(([id])=>p+=3-S['q'+id]);return{t:sc.t,pct:Math.round(p/(sc.qs.length*3)*100)}});
@@ -219,7 +245,7 @@ function results(){
  const weak=[...dims].sort((a,b)=>a.pct-b.pct).slice(0,3);
  const o=id=>esc(S['q'+id]||'');const an=analysis(dims,g);
  $('#view').innerHTML=`<div class="card"><h2>Resultados del diagnóstico</h2>
- <div class="kv"><div><small>Empresa</small><b>${esc(S.name)}</b></div><div><small>NIT</small><b>${maskNit(S.nit)}</b></div><div><small>Actividad CIIU</small><b>${S.ciiu.codigo}</b> ${esc(S.ciiu.descripcion)}</div><div><small>Sector</small><b>${SEC[S.sector].n}</b></div><div><small>Tamaño</small><b>${sizeTxt()}</b><br><small>Ingresos $${fmt(S.ing)} (${fmt((S.ing/UVT).toFixed(0))} UVT)</small></div></div></div>
+ <div class="kv"><div><small>Empresa</small><b>${esc(S.name)}</b></div><div><small>NIT</small><b>${esc(S.rawNit||'')}</b></div><div><small>Actividad CIIU</small><b>${S.ciiu.codigo}</b> ${esc(S.ciiu.descripcion)}</div><div><small>Sector</small><b>${SEC[S.sector].n}</b></div><div><small>Tamaño</small><b>${sizeTxt()}</b></div></div></div>
  <div class="card"><h3>Puntaje global</h3><div class="score" style="color:${col(g)}">${g}%</div>
  ${dims.map(d=>`<div class="row"><span>${d.t}</span><div class="bar"><i style="width:0;background:${col(d.pct)}" data-w="${d.pct}"></i></div><b>${d.pct}%</b></div>`).join('')}
  <small style="color:var(--mut)">🟢 ≥70% · 🟡 40–69% · 🔴 &lt;40%</small></div>
